@@ -55,7 +55,7 @@ static const u1_t PROGMEM APPKEY[16] = { 0xE0, 0x3F, 0x4D, 0x39, 0x07, 0x3B, 0xA
 void os_getDevKey (u1_t* buf) {  memcpy_P(buf, APPKEY, 16);}
 
 static osjob_t sendjob;
-uint8_t txData[3] = {0x12, 0x34, 0x56};
+uint8_t txData[7] = {0x25, 0xE0, 0x30, 0x00, 0x00, 0x00, 0x00};
 
 // Schedule TX every this many seconds (might become longer due to duty
 // cycle limitations).
@@ -182,6 +182,8 @@ void readTempHumAndCo() {
     data[0] = Wire.read();
     data[1] = Wire.read();
   }
+  txData[5] = data[0];
+  txData[6] = data[1];
 
   // Convert the data
   humidity  = ((data[0] * 256.0) + data[1]);
@@ -205,6 +207,8 @@ void readTempHumAndCo() {
     data[0] = Wire.read();
     data[1] = Wire.read();
   }
+  txData[3] = data[0];
+  txData[4] = data[1];
   // Convert the data
   float temp  = ((data[0] * 256.0) + data[1]);
   ctemp = (((175.72 * temp) / 65536.0) - 46.85) - correction;
