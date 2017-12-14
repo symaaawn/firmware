@@ -161,8 +161,21 @@ void do_send(osjob_t* j){
   // Next TX is scheduled after TX_COMPLETE event.
 }
 
-void readTempHumAndCo() {
-  unsigned int data[2];
+void readCo() {
+  total += analogRead(pin_red);
+  read_index += 1;
+}
+
+void turnSensorsOn() {
+  Serial2.begin(9600);
+  Serial.println("preheat on");
+  sds.wakeup();
+  digitalWrite(preheat, HIGH);
+  digitalWrite(led_red, HIGH);
+}
+
+void turnSensorsOffAndReadOnce() {
+    unsigned int data[2];
 
   // Start I2C transmission
   Wire.beginTransmission(Addr);
@@ -220,19 +233,6 @@ void readTempHumAndCo() {
   Serial.print("Temperature in Celsius : ");
   Serial.print(ctemp);
   Serial.println(" C");
-
-  total += analogRead(pin_red);
-  read_index += 1;
-}
-
-void turnSensorsOn() {
-  Serial2.begin(9600);
-  Serial.println("preheat on");
-  sds.wakeup();
-  digitalWrite(preheat, HIGH);
-}
-
-void turnSensorsOffAndReadOnce() {
   Serial.println("Preheat off and read");
   a_no = analogRead(pin_nox);
   a_co = total/read_index;
@@ -246,6 +246,7 @@ void turnSensorsOffAndReadOnce() {
   txData[1] = lowByte(a_no);
   txData[2] = lowByte(a_co);
   digitalWrite(preheat, LOW);
+  digitalWrite(led_red, LOW);
   int error = sds.read(&pm25,&pm10);
   if (! error) {
     Serial.println(pm25);
@@ -300,7 +301,7 @@ void loop(){
   long currentMillis = millis();
   if (currentMillis - lastRead > 5000) {
     lastRead = currentMillis;
-    readTempHumAndCo();
+    readCo();
     digitalWrite(led_green, HIGH);
     delay(1);
     digitalWrite(led_green, LOW);
@@ -314,6 +315,9 @@ void loop(){
     heaterState = HIGH;
     previousMillis = currentMillis;
     turnSensorsOn();
+  }
+  if (currentMillis - lastRestart > 20*60*60000) {
+    ESP.restart(); // remove if openairnode works longer...
   }
   //Do LoRa magic. I mean check if TX is ready and send.
   os_runloop_once();
