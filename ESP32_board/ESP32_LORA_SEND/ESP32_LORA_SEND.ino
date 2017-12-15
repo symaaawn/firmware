@@ -1,3 +1,7 @@
+// If the SPI is not connected to the standard pins, change it in 
+// the lmic driver in line 80 in the static void hal_spi_init () function
+// of hal.cpp
+
 #include <SPI.h>
 #include <Wire.h>
 #include <lmic.h>
@@ -55,11 +59,16 @@ static const u1_t PROGMEM APPKEY[16] = { 0xE0, 0x3F, 0x4D, 0x39, 0x07, 0x3B, 0xA
 void os_getDevKey (u1_t* buf) {  memcpy_P(buf, APPKEY, 16);}
 
 static osjob_t sendjob;
-uint8_t txData[7] = {0x25, 0xE0, 0x30, 0x00, 0x00, 0x00, 0x00};
+
+// This is that data that is going to be send.
+// It is important, that the right values are at the right position.
+// Every Value that is send is 12 bits, so 6 bytes is 4 values: RNOx, RCO, Temperature, and Humidity
+// 
+uint8_t txData[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
 // Schedule TX every this many seconds (might become longer due to duty
-// cycle limitations).
-const unsigned TX_INTERVAL = 60;
+// cycle limitations). Send every fifteen minutes.
+const unsigned TX_INTERVAL = 15 * 60;
 
 // Pin mapping for RFM95
 const lmic_pinmap lmic_pins = {
@@ -76,7 +85,7 @@ long lastRestart = 0;
 int heaterState = LOW;
 unsigned long previousMillis = 0;        // will store last time LED was updated
 long OnTime = 15000;           // milliseconds of on-time
-long OffTime = 45000;          // milliseconds of off-time
+long OffTime = 885000;          // milliseconds of off-time
 int rssi;
 
 void onEvent (ev_t ev) {
@@ -175,7 +184,8 @@ void turnSensorsOn() {
 }
 
 void turnSensorsOffAndReadOnce() {
-    unsigned int data[2];
+  unsigned int humData[2];
+  unsigned int tempData[2];
 
   // Start I2C transmission
   Wire.beginTransmission(Addr);
@@ -192,14 +202,12 @@ void turnSensorsOffAndReadOnce() {
   // humidity msb, humidity lsb
   if (Wire.available() == 2)
   {
-    data[0] = Wire.read();
-    data[1] = Wire.read();
+    humData[0] = Wire.read();
+    humData[1] = Wire.read();
   }
-  txData[5] = data[0];
-  txData[6] = data[1];
-
+  
   // Convert the data
-  humidity  = ((data[0] * 256.0) + data[1]);
+  humidity  = ((humData[0] * 256.0) + tempData[1]);
   humidity = ((125 * humidity) / 65536.0) - 6;
 
   // Start I2C transmission
@@ -217,13 +225,12 @@ void turnSensorsOffAndReadOnce() {
   // temp msb, temp lsb
   if (Wire.available() == 2)
   {
-    data[0] = Wire.read();
-    data[1] = Wire.read();
+    tempData[0] = Wire.read();
+    tempData[1] = Wire.read();
   }
-  txData[3] = data[0];
-  txData[4] = data[1];
+  
   // Convert the data
-  float temp  = ((data[0] * 256.0) + data[1]);
+  float temp  = ((tempData[0] * 256.0) + tempData[1]);
   ctemp = (((175.72 * temp) / 65536.0) - 46.85) - correction;
 
   // Output data to serial monitor
@@ -234,6 +241,17 @@ void turnSensorsOffAndReadOnce() {
   Serial.print(ctemp);
   Serial.println(" C");
   Serial.println("Preheat off and read");
+
+  // disregard accuracy, save bytes.
+  // temp and hum changed from 16 to 12 bit to save one byte in sending data.
+  // only affects second position after decimal point, thats an acceptable loss
+  txData[3] = tempData[0];
+  txData[4] = humData[0];
+  txData[5] = (tempData[1] & 0xF0) | ((humData[1] >> 4) & 0x0F) ;
+  
+  
+
+  // get nox and co value
   a_no = analogRead(pin_nox);
   a_co = total/read_index;
   total = 0;
